@@ -70,6 +70,24 @@ def ndvi(nir, red):
 
 # 上面的是计算植被指数的方法
 
+# 读取五个通道的数据
+def read_tiff_image(file_path):
+    dataset = gdal.Open(file_path)
+    band = dataset.GetRasterBand(1)
+    channel_data = band.ReadAsArray()
+    return channel_data
+
+# 读取rgb照片的数据
+def read_rgb_image(file_path):
+    rgb_image = Image.open(file_path)
+    r, g, b = rgb_image.split()
+    # 将通道数据转换为NumPy数组
+    r_array = np.array(r)
+    g_array = np.array(g)
+    b_array = np.array(b)
+    return r_array, g_array, b_array
+
+
 # 各个通道的数据位置
 red_path = "E:/赤霉/choose/red_choose/"
 green_path = "E:/赤霉/choose/green_choose/"
@@ -81,19 +99,11 @@ nir_path = "E:/赤霉/choose/nir_choose/"
 rgb_path = "E:/赤霉/choose/rgb_choose/"
 
 # 输出位置 植被指数都有ndvi、psri、sipi、gli、rgr、ari
-output_folder = "E:/赤霉/vegetation_index_fusion_rgb/ALL/ALL_1/"
+output_folder = "E:/赤霉/vegetation_index_fusion_rgb/Normal/normal_1/"
 
 # 检查是否存在文件夹，不存在创建
-check_folder = "E:/赤霉/vegetation_index_fusion_rgb/ALL/ALL_1"
+check_folder = "E:/赤霉/vegetation_index_fusion_rgb/Normal/normal_1"
 
-# 打开文件（如果不存在则创建新文件）
-file = open(output_folder + 'introduce.txt', 'w')
-
-# 写入内容
-file.write('0.5*rgb_ph + 0.1*PSRI + 0.1*ARI + 0.1*SIPI + 0.1*RGR + 0.1*GLI')
-
-# 关闭文件
-file.close()
 
 if not os.path.exists(check_folder):
     os.makedirs(check_folder)
@@ -124,3 +134,40 @@ for rgb_name, name in tqdm(zip(rgb_names, names), desc='Processing'):
     blue_file = blue_path + name
     nir_file = nir_path + name
     red_edge_file = red_edge_path + name
+
+    red_data = read_tiff_image(red_file)
+    green_data = read_tiff_image(green_file)
+    blue_data = read_tiff_image(blue_file)
+    nir_data = read_tiff_image(nir_file)
+    red_edge_data = read_tiff_image(red_edge_file)
+
+    r, g, b = read_rgb_image(rgb_file)
+
+    PSRI = psri(red_data, blue_data, nir_data)
+    RGR = rgr(nir_data, green_data)
+    SIPI = sipi(nir_data, blue_data, red_data)
+    ARI = ari(green_data, red_data)
+    GLI = gli(green_data, red_data, blue_data)
+    NDVI = ndvi(nir_data, red_data)
+
+    mu = 0.1 * PSRI + 0.1 * RGR + 0.1 * SIPI + 0.1 * ARI + 0.1 * GLI + 0.1 * NDVI
+
+
+    mu = PSRI + RGR + SIPI + ARI + GLI + NDVI
+    
+    r_data = mu + r
+    g_data = mu + g
+    b_data = mu + b
+
+    # 将r_data、g_data和b_data转换为0-255范围内的整数类型数据
+    r_data = np.uint8(np.clip(r_data, 0, 255))
+    g_data = np.uint8(np.clip(g_data, 0, 255))
+    b_data = np.uint8(np.clip(b_data, 0, 255))
+
+    # 将r_data、g_data和b_data合成为新的RGB图像
+    new_rgb_image = Image.merge('RGB', (Image.fromarray(r_data), Image.fromarray(g_data), Image.fromarray(b_data)))
+
+    output_path = output_folder + rgb_name
+
+    # 保存新的RGB图像
+    new_rgb_image.save(output_path)
